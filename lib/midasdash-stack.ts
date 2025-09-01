@@ -16,7 +16,7 @@ export class MidasDashStack extends cdk.Stack {
 
     // S3 Buckets for file storage
     const problemsBucket = new s3.Bucket(this, 'ProblemsBucket', {
-      bucketName: `mdf-problems-${this.account}`,
+      bucketName: `midasdash-problems-${this.account}`,
       versioned: true,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -31,7 +31,7 @@ export class MidasDashStack extends cdk.Stack {
     });
 
     const solutionsBucket = new s3.Bucket(this, 'SolutionsBucket', {
-      bucketName: `mdf-solutions-${this.account}`,
+      bucketName: `midasdash-solutions-${this.account}`,
       versioned: true,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -46,7 +46,7 @@ export class MidasDashStack extends cdk.Stack {
     });
 
     const lean4Bucket = new s3.Bucket(this, 'Lean4Bucket', {
-      bucketName: `mdf-lean4-${this.account}`,
+      bucketName: `midasdash-lean4-${this.account}`,
       versioned: true,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -62,7 +62,7 @@ export class MidasDashStack extends cdk.Stack {
 
     // DynamoDB Tables
     const coreTable = new dynamodb.Table(this, 'CoreTable', {
-      tableName: 'mdf-core',
+      tableName: 'midasdash-core',
       partitionKey: {
         name: 'PK',
         type: dynamodb.AttributeType.STRING
