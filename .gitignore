@@ -1,0 +1,46 @@
+# Node modules
+node_modules/
+*.log
+npm-debug.log*
+
+# CDK
+*.js
+!jest.config.js
+!lambda/**/*.js
+*.d.ts
+cdk.out/
+.cdk.staging/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Build output
+dist/
+build/
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws/
+*.pem
+
+# Testing
+coverage/
+*.test.js
+*.spec.js
+
+# Temporary files
+tmp/
+temp/

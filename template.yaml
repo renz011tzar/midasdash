@@ -1,0 +1,2846 @@
+Description: Math Data Foundry - AWS Serverless Platform
+Resources:
+  MdfUserPool45FB95DF:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationMessage: The verification code to your new account is {####}
+      EmailVerificationSubject: Verify your new account
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      Schema:
+        - Mutable: true
+          Name: email
+          Required: true
+      SmsVerificationMessage: The verification code to your new account is {####}
+      UserPoolName: mdf-user-pool
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailMessage: The verification code to your new account is {####}
+        EmailSubject: Verify your new account
+        SmsMessage: The verification code to your new account is {####}
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfUserPool/Resource
+  MdfUserPoolMdfWebClient5E7A5D72:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - implicit
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - http://localhost:3000/callback
+        - Fn::Join:
+            - ""
+            - - https://
+              - Ref: AWS::AccountId
+              - .cloudfront.net/callback
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      LogoutURLs:
+        - http://localhost:3000
+        - Fn::Join:
+            - ""
+            - - https://
+              - Ref: AWS::AccountId
+              - .cloudfront.net
+      SupportedIdentityProviders:
+        - COGNITO
+      UserPoolId:
+        Ref: MdfUserPool45FB95DF
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfUserPool/MdfWebClient/Resource
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Admin users with full access
+      GroupName: admin
+      Precedence: 1
+      UserPoolId:
+        Ref: MdfUserPool45FB95DF
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AdminGroup
+  AnnotatorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Annotator users with restricted access
+      GroupName: annotator
+      Precedence: 10
+      UserPoolId:
+        Ref: MdfUserPool45FB95DF
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AnnotatorGroup
+  InitialAdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      MessageAction: SUPPRESS
+      UserAttributes:
+        - Name: email
+          Value: renzo.balcazar.1@gmail.com
+        - Name: email_verified
+          Value: "true"
+      UserPoolId:
+        Ref: MdfUserPool45FB95DF
+      Username: renzo.balcazar.1@gmail.com
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/InitialAdminUser
+  AdminUserToGroup:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      GroupName: admin
+      UserPoolId:
+        Ref: MdfUserPool45FB95DF
+      Username: renzo.balcazar.1@gmail.com
+    DependsOn:
+      - AdminGroup
+      - InitialAdminUser
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AdminUserToGroup
+  MdfCoreTable166C1280:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: submittedBy
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+        - AttributeName: reviewState
+          AttributeType: S
+        - AttributeName: label
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: UserSubmissionsIndex
+          KeySchema:
+            - AttributeName: submittedBy
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ReviewQueueIndex
+          KeySchema:
+            - AttributeName: reviewState
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: LabelSearchIndex
+          KeySchema:
+            - AttributeName: label
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TableName: mdf-core
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfCoreTable/Resource
+  ProblemsBucket8E08FEC1:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName:
+        Fn::Join:
+          - ""
+          - - mdf-problems-
+            - Ref: AWS::AccountId
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+              - StorageClass: DEEP_ARCHIVE
+                TransitionInDays: 180
+      VersioningConfiguration:
+        Status: Enabled
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/ProblemsBucket/Resource
+  SolutionsBucket83A95230:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName:
+        Fn::Join:
+          - ""
+          - - mdf-solutions-
+            - Ref: AWS::AccountId
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+              - StorageClass: DEEP_ARCHIVE
+                TransitionInDays: 180
+      VersioningConfiguration:
+        Status: Enabled
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/SolutionsBucket/Resource
+  Lean4Bucket6527DDB2:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName:
+        Fn::Join:
+          - ""
+          - - mdf-lean4-
+            - Ref: AWS::AccountId
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+              - StorageClass: DEEP_ARCHIVE
+                TransitionInDays: 180
+      VersioningConfiguration:
+        Status: Enabled
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/Lean4Bucket/Resource
+  ExportsBucket5A12738B:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName:
+        Fn::Join:
+          - ""
+          - - mdf-exports-
+            - Ref: AWS::AccountId
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/ExportsBucket/Resource
+  FrontendBucketEFE2E19C:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Join:
+          - ""
+          - - mdf-frontend-
+            - Ref: AWS::AccountId
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: aws-cdk:auto-delete-objects
+          Value: "true"
+      WebsiteConfiguration:
+        ErrorDocument: error.html
+        IndexDocument: index.html
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/FrontendBucket/Resource
+  FrontendBucketPolicy1DFF75D9:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: FrontendBucketEFE2E19C
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:DeleteObject*
+              - s3:GetBucket*
+              - s3:List*
+              - s3:PutBucketPolicy
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::GetAtt:
+                  - CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+                  - Arn
+            Resource:
+              - Fn::GetAtt:
+                  - FrontendBucketEFE2E19C
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - FrontendBucketEFE2E19C
+                        - Arn
+                    - /*
+          - Action:
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+            Effect: Allow
+            Principal:
+              CanonicalUser:
+                Fn::GetAtt:
+                  - OAIE1EFC67F
+                  - S3CanonicalUserId
+            Resource:
+              - Fn::GetAtt:
+                  - FrontendBucketEFE2E19C
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - FrontendBucketEFE2E19C
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/FrontendBucket/Policy/Resource
+  FrontendBucketAutoDeleteObjectsCustomResourceDB860B32:
+    Type: Custom::S3AutoDeleteObjects
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F
+          - Arn
+      BucketName:
+        Ref: FrontendBucketEFE2E19C
+    DependsOn:
+      - FrontendBucketPolicy1DFF75D9
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/FrontendBucket/AutoDeleteObjectsCustomResource/Default
+  CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+        - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role
+  CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub: cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1
+        S3Key: faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip
+      Timeout: 900
+      MemorySize: 128
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+          - CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+          - Arn
+      Runtime: nodejs22.x
+      Description:
+        Fn::Join:
+          - ""
+          - - "Lambda function for auto-deleting objects in "
+            - Ref: FrontendBucketEFE2E19C
+            - " S3 bucket."
+    DependsOn:
+      - CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler
+      aws:asset:path: asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6
+      aws:asset:property: Code
+  NotificationTopicEB7A0DF1:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Math Data Foundry Notifications
+      TopicName: mdf-notifications
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/NotificationTopic/Resource
+  NotificationTopicrenzobalcazar1gmailcom01F6037B:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: renzo.balcazar.1@gmail.com
+      Protocol: email
+      TopicArn:
+        Ref: NotificationTopicEB7A0DF1
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/NotificationTopic/renzo.balcazar.1@gmail.com/Resource
+  NotificationTopicPolicyF935982E:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: sns:Publish
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Resource:
+              Ref: NotificationTopicEB7A0DF1
+            Sid: "0"
+        Version: "2012-10-17"
+      Topics:
+        - Ref: NotificationTopicEB7A0DF1
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/NotificationTopic/Policy/Resource
+  AuthFunctionServiceRole87A7A68C:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AuthFunction/ServiceRole/Resource
+  AuthFunctionServiceRoleDefaultPolicy4198AD5B:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+              - dynamodb:GetItem
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:PutItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:UpdateItem
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - MdfCoreTable166C1280
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - MdfCoreTable166C1280
+                        - Arn
+                    - /index/*
+          - Action:
+              - cognito-idp:AdminAddUserToGroup
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminListGroupsForUser
+              - cognito-idp:AdminRemoveUserFromGroup
+              - cognito-idp:ListUsers
+              - cognito-idp:ListUsersInGroup
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MdfUserPool45FB95DF
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: AuthFunctionServiceRoleDefaultPolicy4198AD5B
+      Roles:
+        - Ref: AuthFunctionServiceRole87A7A68C
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AuthFunction/ServiceRole/DefaultPolicy/Resource
+  AuthFunctionA1CD5E0F:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub: cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1
+        S3Key: 39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab.zip
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: MdfCoreTable166C1280
+          PROBLEMS_BUCKET:
+            Ref: ProblemsBucket8E08FEC1
+          SOLUTIONS_BUCKET:
+            Ref: SolutionsBucket83A95230
+          LEAN4_BUCKET:
+            Ref: Lean4Bucket6527DDB2
+          EXPORTS_BUCKET:
+            Ref: ExportsBucket5A12738B
+          USER_POOL_ID:
+            Ref: MdfUserPool45FB95DF
+          USER_POOL_CLIENT_ID:
+            Ref: MdfUserPoolMdfWebClient5E7A5D72
+          NOTIFICATION_TOPIC_ARN:
+            Ref: NotificationTopicEB7A0DF1
+          REGION:
+            Ref: AWS::Region
+      FunctionName: mdf-auth
+      Handler: auth.handler
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+          - AuthFunctionServiceRole87A7A68C
+          - Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+    DependsOn:
+      - AuthFunctionServiceRoleDefaultPolicy4198AD5B
+      - AuthFunctionServiceRole87A7A68C
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AuthFunction/Resource
+      aws:asset:path: asset.39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+  DatasetsFunctionServiceRole2B293673:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/DatasetsFunction/ServiceRole/Resource
+  DatasetsFunctionServiceRoleDefaultPolicyFB13C5C9:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+              - dynamodb:GetItem
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:PutItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:UpdateItem
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - MdfCoreTable166C1280
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - MdfCoreTable166C1280
+                        - Arn
+                    - /index/*
+          - Action:
+              - cognito-idp:AdminAddUserToGroup
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminListGroupsForUser
+              - cognito-idp:AdminRemoveUserFromGroup
+              - cognito-idp:ListUsers
+              - cognito-idp:ListUsersInGroup
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MdfUserPool45FB95DF
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: DatasetsFunctionServiceRoleDefaultPolicyFB13C5C9
+      Roles:
+        - Ref: DatasetsFunctionServiceRole2B293673
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/DatasetsFunction/ServiceRole/DefaultPolicy/Resource
+  DatasetsFunction0DFE83FB:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub: cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1
+        S3Key: 39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab.zip
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: MdfCoreTable166C1280
+          PROBLEMS_BUCKET:
+            Ref: ProblemsBucket8E08FEC1
+          SOLUTIONS_BUCKET:
+            Ref: SolutionsBucket83A95230
+          LEAN4_BUCKET:
+            Ref: Lean4Bucket6527DDB2
+          EXPORTS_BUCKET:
+            Ref: ExportsBucket5A12738B
+          USER_POOL_ID:
+            Ref: MdfUserPool45FB95DF
+          USER_POOL_CLIENT_ID:
+            Ref: MdfUserPoolMdfWebClient5E7A5D72
+          NOTIFICATION_TOPIC_ARN:
+            Ref: NotificationTopicEB7A0DF1
+          REGION:
+            Ref: AWS::Region
+      FunctionName: mdf-datasets
+      Handler: datasets.handler
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+          - DatasetsFunctionServiceRole2B293673
+          - Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+    DependsOn:
+      - DatasetsFunctionServiceRoleDefaultPolicyFB13C5C9
+      - DatasetsFunctionServiceRole2B293673
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/DatasetsFunction/Resource
+      aws:asset:path: asset.39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+  ProblemsFunctionServiceRoleC5094DAA:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/ProblemsFunction/ServiceRole/Resource
+  ProblemsFunctionServiceRoleDefaultPolicy46936444:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+              - dynamodb:GetItem
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:PutItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:UpdateItem
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - MdfCoreTable166C1280
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - MdfCoreTable166C1280
+                        - Arn
+                    - /index/*
+          - Action:
+              - s3:Abort*
+              - s3:DeleteObject*
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - Lean4Bucket6527DDB2
+                  - Arn
+              - Fn::GetAtt:
+                  - ProblemsBucket8E08FEC1
+                  - Arn
+              - Fn::GetAtt:
+                  - SolutionsBucket83A95230
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - Lean4Bucket6527DDB2
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ProblemsBucket8E08FEC1
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - SolutionsBucket83A95230
+                        - Arn
+                    - /*
+          - Action: sns:Publish
+            Effect: Allow
+            Resource:
+              Ref: NotificationTopicEB7A0DF1
+        Version: "2012-10-17"
+      PolicyName: ProblemsFunctionServiceRoleDefaultPolicy46936444
+      Roles:
+        - Ref: ProblemsFunctionServiceRoleC5094DAA
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/ProblemsFunction/ServiceRole/DefaultPolicy/Resource
+  ProblemsFunction7958F8CB:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub: cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1
+        S3Key: 39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab.zip
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: MdfCoreTable166C1280
+          PROBLEMS_BUCKET:
+            Ref: ProblemsBucket8E08FEC1
+          SOLUTIONS_BUCKET:
+            Ref: SolutionsBucket83A95230
+          LEAN4_BUCKET:
+            Ref: Lean4Bucket6527DDB2
+          EXPORTS_BUCKET:
+            Ref: ExportsBucket5A12738B
+          USER_POOL_ID:
+            Ref: MdfUserPool45FB95DF
+          USER_POOL_CLIENT_ID:
+            Ref: MdfUserPoolMdfWebClient5E7A5D72
+          NOTIFICATION_TOPIC_ARN:
+            Ref: NotificationTopicEB7A0DF1
+          REGION:
+            Ref: AWS::Region
+      FunctionName: mdf-problems
+      Handler: problems.handler
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+          - ProblemsFunctionServiceRoleC5094DAA
+          - Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+    DependsOn:
+      - ProblemsFunctionServiceRoleDefaultPolicy46936444
+      - ProblemsFunctionServiceRoleC5094DAA
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/ProblemsFunction/Resource
+      aws:asset:path: asset.39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+  AdminFunctionServiceRoleE19718A7:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AdminFunction/ServiceRole/Resource
+  AdminFunctionServiceRoleDefaultPolicyB69DB622:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+              - dynamodb:GetItem
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:PutItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:UpdateItem
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - MdfCoreTable166C1280
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - MdfCoreTable166C1280
+                        - Arn
+                    - /index/*
+          - Action:
+              - s3:Abort*
+              - s3:DeleteObject*
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - ExportsBucket5A12738B
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ExportsBucket5A12738B
+                        - Arn
+                    - /*
+          - Action:
+              - s3:GetBucket*
+              - s3:GetObject*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - Lean4Bucket6527DDB2
+                  - Arn
+              - Fn::GetAtt:
+                  - ProblemsBucket8E08FEC1
+                  - Arn
+              - Fn::GetAtt:
+                  - SolutionsBucket83A95230
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - Lean4Bucket6527DDB2
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ProblemsBucket8E08FEC1
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - SolutionsBucket83A95230
+                        - Arn
+                    - /*
+          - Action: sns:Publish
+            Effect: Allow
+            Resource:
+              Ref: NotificationTopicEB7A0DF1
+          - Action:
+              - cognito-idp:AdminAddUserToGroup
+              - cognito-idp:AdminGetUser
+              - cognito-idp:AdminListGroupsForUser
+              - cognito-idp:AdminRemoveUserFromGroup
+              - cognito-idp:ListUsers
+              - cognito-idp:ListUsersInGroup
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MdfUserPool45FB95DF
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: AdminFunctionServiceRoleDefaultPolicyB69DB622
+      Roles:
+        - Ref: AdminFunctionServiceRoleE19718A7
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AdminFunction/ServiceRole/DefaultPolicy/Resource
+  AdminFunction09BA95C5:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Fn::Sub: cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1
+        S3Key: 39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab.zip
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: MdfCoreTable166C1280
+          PROBLEMS_BUCKET:
+            Ref: ProblemsBucket8E08FEC1
+          SOLUTIONS_BUCKET:
+            Ref: SolutionsBucket83A95230
+          LEAN4_BUCKET:
+            Ref: Lean4Bucket6527DDB2
+          EXPORTS_BUCKET:
+            Ref: ExportsBucket5A12738B
+          USER_POOL_ID:
+            Ref: MdfUserPool45FB95DF
+          USER_POOL_CLIENT_ID:
+            Ref: MdfUserPoolMdfWebClient5E7A5D72
+          NOTIFICATION_TOPIC_ARN:
+            Ref: NotificationTopicEB7A0DF1
+          REGION:
+            Ref: AWS::Region
+      FunctionName: mdf-admin
+      Handler: admin.handler
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+          - AdminFunctionServiceRoleE19718A7
+          - Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+    DependsOn:
+      - AdminFunctionServiceRoleDefaultPolicyB69DB622
+      - AdminFunctionServiceRoleE19718A7
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/AdminFunction/Resource
+      aws:asset:path: asset.39e7651e0ef2f92bb85e0dbe1a071f05a6f9b7086e6af95e2e3e1382e6d0c8ab
+      aws:asset:is-bundled: false
+      aws:asset:property: Code
+  MdfApi461FA881:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: Math Data Foundry API
+      Name: mdf-api
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Resource
+  MdfApiDeployment706AE53387f30afb25f4ec0c519845c82305b1f8:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      Description: Math Data Foundry API
+      RestApiId:
+        Ref: MdfApi461FA881
+    DependsOn:
+      - MdfApiadminexportOPTIONS1BAE78FC
+      - MdfApiadminexportPOST3FD31D0E
+      - MdfApiadminexportF25F34C6
+      - MdfApiadminOPTIONS10971EF6
+      - MdfApiadmin1A56479C
+      - MdfApiadminreviewOPTIONS04693719
+      - MdfApiadminreviewPOSTF3AF6C1D
+      - MdfApiadminreview9D12CDBD
+      - MdfApidatasetsdatasetIdGET2816B7B7
+      - MdfApidatasetsdatasetIdmembersDELETE71C4730E
+      - MdfApidatasetsdatasetIdmembersGETDE1675F8
+      - MdfApidatasetsdatasetIdmembersOPTIONS7455DBCC
+      - MdfApidatasetsdatasetIdmembersPOST77693E2C
+      - MdfApidatasetsdatasetIdmembers3DEC8402
+      - MdfApidatasetsdatasetIdOPTIONSBC78D88C
+      - MdfApidatasetsdatasetIdproblemsGETCBD5F3F2
+      - MdfApidatasetsdatasetIdproblemsOPTIONSA54267B0
+      - MdfApidatasetsdatasetIdproblemsPOSTF98025C5
+      - MdfApidatasetsdatasetIdproblemsB20DAEB3
+      - MdfApidatasetsdatasetId0DD4A462
+      - MdfApidatasetsGET40EE4345
+      - MdfApidatasetsOPTIONS753462EA
+      - MdfApidatasetsPOST17579830
+      - MdfApidatasetsABBF70FE
+      - MdfApimeGETAC321400
+      - MdfApimeOPTIONSB5A49930
+      - MdfApime2F2376A5
+      - MdfApiOPTIONSD429D68C
+      - MdfApiproblemsproblemIdfinalizeOPTIONS4B8363EA
+      - MdfApiproblemsproblemIdfinalizePOST992E96C5
+      - MdfApiproblemsproblemIdfinalize140DDFF9
+      - MdfApiproblemsproblemIdGETFA653C5A
+      - MdfApiproblemsproblemIdlean4OPTIONS178763FC
+      - MdfApiproblemsproblemIdlean4PUTE9556444
+      - MdfApiproblemsproblemIdlean4CD24243F
+      - MdfApiproblemsproblemIdOPTIONS0E4077D2
+      - MdfApiproblemsproblemIdPUT382B5343
+      - MdfApiproblemsproblemId1B0DF32A
+      - MdfApiproblemsOPTIONS856E28AF
+      - MdfApiproblems48B8EBF8
+      - MdfApiproblemssearchOPTIONS0AEB4465
+      - MdfApiproblemssearchPOSTEA539C57
+      - MdfApiproblemssearch96478AEC
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Deployment/Resource
+      aws:cdk:do-not-refactor: true
+  MdfApiDeploymentStageprodEB812332:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId:
+        Ref: MdfApiDeployment706AE53387f30afb25f4ec0c519845c82305b1f8
+      MethodSettings:
+        - DataTraceEnabled: true
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: /*
+      RestApiId:
+        Ref: MdfApi461FA881
+      StageName: prod
+      TracingEnabled: true
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/DeploymentStage.prod/Resource
+  MdfApiOPTIONSD429D68C:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Fn::GetAtt:
+          - MdfApi461FA881
+          - RootResourceId
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/OPTIONS/Resource
+  MdfApime2F2376A5:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - MdfApi461FA881
+          - RootResourceId
+      PathPart: me
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/me/Resource
+  MdfApimeOPTIONSB5A49930:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApime2F2376A5
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/me/OPTIONS/Resource
+  MdfApimeGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETme2A9F6BD1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AuthFunctionA1CD5E0F
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/me
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/me/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..me
+  MdfApimeGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETmeF3DB9ED6:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AuthFunctionA1CD5E0F
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/me
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/me/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..me
+  MdfApimeGETAC321400:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - AuthFunctionA1CD5E0F
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApime2F2376A5
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/me/GET/Resource
+  MdfApidatasetsABBF70FE:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - MdfApi461FA881
+          - RootResourceId
+      PathPart: datasets
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/Resource
+  MdfApidatasetsOPTIONS753462EA:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApidatasetsABBF70FE
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/OPTIONS/Resource
+  MdfApidatasetsGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETdatasets3A29F15B:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/datasets
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..datasets
+  MdfApidatasetsGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETdatasets137F8B85:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/datasets
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..datasets
+  MdfApidatasetsGET40EE4345:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsABBF70FE
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/GET/Resource
+  MdfApidatasetsPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTdatasetsBC125E67:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/datasets
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..datasets
+  MdfApidatasetsPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTdatasetsB218C9B2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/datasets
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..datasets
+  MdfApidatasetsPOST17579830:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsABBF70FE
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/POST/Resource
+  MdfApidatasetsdatasetId0DD4A462:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApidatasetsABBF70FE
+      PathPart: "{datasetId}"
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/Resource
+  MdfApidatasetsdatasetIdOPTIONSBC78D88C:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApidatasetsdatasetId0DD4A462
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/OPTIONS/Resource
+  MdfApidatasetsdatasetIdGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetId13400006:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/datasets/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}
+  MdfApidatasetsdatasetIdGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetIdD05D9D1D:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/datasets/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}
+  MdfApidatasetsdatasetIdGET2816B7B7:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetId0DD4A462
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/GET/Resource
+  MdfApidatasetsdatasetIdmembers3DEC8402:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApidatasetsdatasetId0DD4A462
+      PathPart: members
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/Resource
+  MdfApidatasetsdatasetIdmembersOPTIONS7455DBCC:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdmembers3DEC8402
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/OPTIONS/Resource
+  MdfApidatasetsdatasetIdmembersGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetIdmembers83AE3818:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetIdmembersBA938E6B:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersGETDE1675F8:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdmembers3DEC8402
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/GET/Resource
+  MdfApidatasetsdatasetIdmembersPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTdatasetsdatasetIdmembers41BB5A0B:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTdatasetsdatasetIdmembersAEFF3550:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersPOST77693E2C:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdmembers3DEC8402
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/POST/Resource
+  MdfApidatasetsdatasetIdmembersDELETEApiPermissionMathDataFoundryStackMdfApiC9177E86DELETEdatasetsdatasetIdmembers9ECAAF2F:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /DELETE/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/DELETE/ApiPermission.MathDataFoundryStackMdfApiC9177E86.DELETE..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersDELETEApiPermissionTestMathDataFoundryStackMdfApiC9177E86DELETEdatasetsdatasetIdmembers2042B8BA:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - DatasetsFunction0DFE83FB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/DELETE/datasets/*/members
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/DELETE/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.DELETE..datasets.{datasetId}.members
+  MdfApidatasetsdatasetIdmembersDELETE71C4730E:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: DELETE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - DatasetsFunction0DFE83FB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdmembers3DEC8402
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/members/DELETE/Resource
+  MdfApidatasetsdatasetIdproblemsB20DAEB3:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApidatasetsdatasetId0DD4A462
+      PathPart: problems
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/Resource
+  MdfApidatasetsdatasetIdproblemsOPTIONSA54267B0:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdproblemsB20DAEB3
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/OPTIONS/Resource
+  MdfApidatasetsdatasetIdproblemsGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetIdproblems5A437946:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/datasets/*/problems
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}.problems
+  MdfApidatasetsdatasetIdproblemsGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETdatasetsdatasetIdproblems7A8FEAFE:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/datasets/*/problems
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..datasets.{datasetId}.problems
+  MdfApidatasetsdatasetIdproblemsGETCBD5F3F2:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdproblemsB20DAEB3
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/GET/Resource
+  MdfApidatasetsdatasetIdproblemsPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTdatasetsdatasetIdproblems91053167:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/datasets/*/problems
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..datasets.{datasetId}.problems
+  MdfApidatasetsdatasetIdproblemsPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTdatasetsdatasetIdproblemsB5634A32:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/datasets/*/problems
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..datasets.{datasetId}.problems
+  MdfApidatasetsdatasetIdproblemsPOSTF98025C5:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApidatasetsdatasetIdproblemsB20DAEB3
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/datasets/{datasetId}/problems/POST/Resource
+  MdfApiproblems48B8EBF8:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - MdfApi461FA881
+          - RootResourceId
+      PathPart: problems
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/Resource
+  MdfApiproblemsOPTIONS856E28AF:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiproblems48B8EBF8
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/OPTIONS/Resource
+  MdfApiproblemsproblemId1B0DF32A:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiproblems48B8EBF8
+      PathPart: "{problemId}"
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/Resource
+  MdfApiproblemsproblemIdOPTIONS0E4077D2:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiproblemsproblemId1B0DF32A
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/OPTIONS/Resource
+  MdfApiproblemsproblemIdGETApiPermissionMathDataFoundryStackMdfApiC9177E86GETproblemsproblemId0E0857D3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /GET/problems/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/GET/ApiPermission.MathDataFoundryStackMdfApiC9177E86.GET..problems.{problemId}
+  MdfApiproblemsproblemIdGETApiPermissionTestMathDataFoundryStackMdfApiC9177E86GETproblemsproblemIdC587ED21:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/GET/problems/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/GET/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.GET..problems.{problemId}
+  MdfApiproblemsproblemIdGETFA653C5A:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiproblemsproblemId1B0DF32A
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/GET/Resource
+  MdfApiproblemsproblemIdPUTApiPermissionMathDataFoundryStackMdfApiC9177E86PUTproblemsproblemIdC1A5C945:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /PUT/problems/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/PUT/ApiPermission.MathDataFoundryStackMdfApiC9177E86.PUT..problems.{problemId}
+  MdfApiproblemsproblemIdPUTApiPermissionTestMathDataFoundryStackMdfApiC9177E86PUTproblemsproblemId27C3F7E9:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/PUT/problems/*
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/PUT/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.PUT..problems.{problemId}
+  MdfApiproblemsproblemIdPUT382B5343:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: PUT
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiproblemsproblemId1B0DF32A
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/PUT/Resource
+  MdfApiproblemsproblemIdfinalize140DDFF9:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiproblemsproblemId1B0DF32A
+      PathPart: finalize
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/finalize/Resource
+  MdfApiproblemsproblemIdfinalizeOPTIONS4B8363EA:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiproblemsproblemIdfinalize140DDFF9
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/finalize/OPTIONS/Resource
+  MdfApiproblemsproblemIdfinalizePOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTproblemsproblemIdfinalize150C5B00:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/problems/*/finalize
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/finalize/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..problems.{problemId}.finalize
+  MdfApiproblemsproblemIdfinalizePOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTproblemsproblemIdfinalize4B21607F:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/problems/*/finalize
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/finalize/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..problems.{problemId}.finalize
+  MdfApiproblemsproblemIdfinalizePOST992E96C5:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiproblemsproblemIdfinalize140DDFF9
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/finalize/POST/Resource
+  MdfApiproblemsproblemIdlean4CD24243F:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiproblemsproblemId1B0DF32A
+      PathPart: lean4
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/lean4/Resource
+  MdfApiproblemsproblemIdlean4OPTIONS178763FC:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiproblemsproblemIdlean4CD24243F
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/lean4/OPTIONS/Resource
+  MdfApiproblemsproblemIdlean4PUTApiPermissionMathDataFoundryStackMdfApiC9177E86PUTproblemsproblemIdlean4A220F406:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /PUT/problems/*/lean4
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/lean4/PUT/ApiPermission.MathDataFoundryStackMdfApiC9177E86.PUT..problems.{problemId}.lean4
+  MdfApiproblemsproblemIdlean4PUTApiPermissionTestMathDataFoundryStackMdfApiC9177E86PUTproblemsproblemIdlean40A7FE58C:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/PUT/problems/*/lean4
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/lean4/PUT/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.PUT..problems.{problemId}.lean4
+  MdfApiproblemsproblemIdlean4PUTE9556444:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: PUT
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiproblemsproblemIdlean4CD24243F
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/{problemId}/lean4/PUT/Resource
+  MdfApiproblemssearch96478AEC:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiproblems48B8EBF8
+      PathPart: search
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/search/Resource
+  MdfApiproblemssearchOPTIONS0AEB4465:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiproblemssearch96478AEC
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/search/OPTIONS/Resource
+  MdfApiproblemssearchPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTproblemssearchB61BDC88:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/problems/search
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/search/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..problems.search
+  MdfApiproblemssearchPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTproblemssearch48E8E8DD:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - ProblemsFunction7958F8CB
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/problems/search
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/search/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..problems.search
+  MdfApiproblemssearchPOSTEA539C57:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - ProblemsFunction7958F8CB
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiproblemssearch96478AEC
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/problems/search/POST/Resource
+  MdfApiadmin1A56479C:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+          - MdfApi461FA881
+          - RootResourceId
+      PathPart: admin
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/Resource
+  MdfApiadminOPTIONS10971EF6:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiadmin1A56479C
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/OPTIONS/Resource
+  MdfApiadminexportF25F34C6:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiadmin1A56479C
+      PathPart: export
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/export/Resource
+  MdfApiadminexportOPTIONS1BAE78FC:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiadminexportF25F34C6
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/export/OPTIONS/Resource
+  MdfApiadminexportPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTadminexportE8A7C73F:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AdminFunction09BA95C5
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/admin/export
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/export/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..admin.export
+  MdfApiadminexportPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTadminexportF28F1338:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AdminFunction09BA95C5
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/admin/export
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/export/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..admin.export
+  MdfApiadminexportPOST3FD31D0E:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - AdminFunction09BA95C5
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiadminexportF25F34C6
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/export/POST/Resource
+  MdfApiadminreview9D12CDBD:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: MdfApiadmin1A56479C
+      PathPart: review
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/review/Resource
+  MdfApiadminreviewOPTIONS04693719:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+            StatusCode: "204"
+        RequestTemplates:
+          application/json: "{ statusCode: 200 }"
+        Type: MOCK
+      MethodResponses:
+        - ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+          StatusCode: "204"
+      ResourceId:
+        Ref: MdfApiadminreview9D12CDBD
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/review/OPTIONS/Resource
+  MdfApiadminreviewPOSTApiPermissionMathDataFoundryStackMdfApiC9177E86POSTadminreview8AEB2E3B:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AdminFunction09BA95C5
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /
+            - Ref: MdfApiDeploymentStageprodEB812332
+            - /POST/admin/review
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/review/POST/ApiPermission.MathDataFoundryStackMdfApiC9177E86.POST..admin.review
+  MdfApiadminreviewPOSTApiPermissionTestMathDataFoundryStackMdfApiC9177E86POSTadminreview5DF46AC9:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - AdminFunction09BA95C5
+          - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Join:
+          - ""
+          - - "arn:aws:execute-api:us-east-1:"
+            - Ref: AWS::AccountId
+            - ":"
+            - Ref: MdfApi461FA881
+            - /test-invoke-stage/POST/admin/review
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/review/POST/ApiPermission.Test.MathDataFoundryStackMdfApiC9177E86.POST..admin.review
+  MdfApiadminreviewPOSTF3AF6C1D:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId:
+        Ref: MdfAuthorizer1E26BA2B
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Join:
+            - ""
+            - - arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/
+              - Fn::GetAtt:
+                  - AdminFunction09BA95C5
+                  - Arn
+              - /invocations
+      ResourceId:
+        Ref: MdfApiadminreview9D12CDBD
+      RestApiId:
+        Ref: MdfApi461FA881
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfApi/Default/admin/review/POST/Resource
+  MdfAuthorizer1E26BA2B:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      IdentitySource: method.request.header.Authorization
+      Name: MdfCognitoAuthorizer
+      ProviderARNs:
+        - Fn::GetAtt:
+            - MdfUserPool45FB95DF
+            - Arn
+      RestApiId:
+        Ref: MdfApi461FA881
+      Type: COGNITO_USER_POOLS
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfAuthorizer/Resource
+  OAIE1EFC67F:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Allows CloudFront to reach the bucket
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/OAI/Resource
+  MdfDistribution8D262987:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        CacheBehaviors:
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            PathPattern: /api/*
+            TargetOriginId: MathDataFoundryStackMdfDistributionOrigin24D8D5555
+            ViewerProtocolPolicy: https-only
+        CustomErrorResponses:
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          TargetOriginId: MathDataFoundryStackMdfDistributionOrigin199AE9CC9
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              OriginSSLProtocols:
+                - TLSv1.2
+            DomainName:
+              Fn::Select:
+                - 2
+                - Fn::Split:
+                    - /
+                    - Fn::GetAtt:
+                        - FrontendBucketEFE2E19C
+                        - WebsiteURL
+            Id: MathDataFoundryStackMdfDistributionOrigin199AE9CC9
+          - CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+            DomainName:
+              Fn::Select:
+                - 2
+                - Fn::Split:
+                    - /
+                    - Fn::Join:
+                        - ""
+                        - - https://
+                          - Ref: MdfApi461FA881
+                          - .execute-api.us-east-1.
+                          - Ref: AWS::URLSuffix
+                          - /
+                          - Ref: MdfApiDeploymentStageprodEB812332
+                          - /
+            Id: MathDataFoundryStackMdfDistributionOrigin24D8D5555
+            OriginPath:
+              Fn::Join:
+                - ""
+                - - /
+                  - Fn::Select:
+                      - 3
+                      - Fn::Split:
+                          - /
+                          - Fn::Join:
+                              - ""
+                              - - https://
+                                - Ref: MdfApi461FA881
+                                - .execute-api.us-east-1.
+                                - Ref: AWS::URLSuffix
+                                - /
+                                - Ref: MdfApiDeploymentStageprodEB812332
+                                - /
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfDistribution/Resource
+  SubmissionRule780FFF03:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - mdf.submissions
+        detail-type:
+          - New Submission
+          - Submission Finalized
+      State: ENABLED
+      Targets:
+        - Arn:
+            Ref: NotificationTopicEB7A0DF1
+          Id: Target0
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/SubmissionRule/Resource
+  MdfWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Action:
+            Block: {}
+          Name: RateLimitRule
+          Priority: 1
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: IP
+              Limit: 2000
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitRule
+            SampledRequestsEnabled: true
+        - Name: CommonRuleSet
+          OverrideAction:
+            None: {}
+          Priority: 2
+          Statement:
+            ManagedRuleGroupStatement:
+              Name: AWSManagedRulesCommonRuleSet
+              VendorName: AWS
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: CommonRuleSet
+            SampledRequestsEnabled: true
+      Scope: CLOUDFRONT
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: MdfWebAcl
+        SampledRequestsEnabled: true
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/MdfWebAcl
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/21TTU/jMBD9Ldxd79KivYciVkggqsKKI3LsaRiaeCKP3aob5b9jO8k2sJzmvZk3k/lwlnJ5uZI/L9SRF9rsFzWWsnvySu9FdL12miqLnmT3h8FtiGqx3tl/eALrGsH6eeh/z29HoZ07kv3KnynLCh87eGtihV6Yk1UNmdjWsyprSBkZ9IJXsrsOeg/5OyMazIZq1Keze+QDuVacsi3HktSiziUzeAola4etR7LJ+4lnybnwjPaiVk1plOxug9VT8hxvwDXIHFkvUDWy29IwSrbnolM9Xr0qZvAsi2SEarFSHo7qFFOBfdFizh7hDbQ1nZpx4zMWL1nl7wwg6ik4DWkD4gH8G5kUHNEUHSuPeHgA05G4CFHr8O9wuzPrha4pmJ0j62X36LBCW2gNzHcmdoI+z7dOmtuk+VZxg+wdlmFa25z3Ag5RFo+2DePuQnoFR7U7LGWkL1AW6/t+NkZgT833U30KbRwd0IDLa8kLT+tCW6Wcx+DbEN+hJQPynX8cllfyV/xj3hlx4UJsvAG5HewHEBhW+04DAAA=
+    Metadata:
+      aws:cdk:path: MathDataFoundryStack/CDKMetadata/Default
+Outputs:
+  MdfApiEndpointAEA866DF:
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Ref: MdfApi461FA881
+          - .execute-api.us-east-1.
+          - Ref: AWS::URLSuffix
+          - /
+          - Ref: MdfApiDeploymentStageprodEB812332
+          - /
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value:
+      Ref: MdfUserPool45FB95DF
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value:
+      Ref: MdfUserPoolMdfWebClient5E7A5D72
+  ApiUrl:
+    Description: API Gateway URL
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Ref: MdfApi461FA881
+          - .execute-api.us-east-1.
+          - Ref: AWS::URLSuffix
+          - /
+          - Ref: MdfApiDeploymentStageprodEB812332
+          - /
+  CloudFrontUrl:
+    Description: CloudFront Distribution URL
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Fn::GetAtt:
+              - MdfDistribution8D262987
+              - DomainName
+  FrontendBucketName:
+    Description: Frontend S3 Bucket Name
+    Value:
+      Ref: FrontendBucketEFE2E19C
+Parameters:
+  BootstrapVersion:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /cdk-bootstrap/hnb659fds/version
+    Description: Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]
+

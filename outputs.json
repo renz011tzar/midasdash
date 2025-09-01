@@ -1,0 +1,10 @@
+{
+  "MathDataFoundryStack": {
+    "MdfApiEndpointAEA866DF": "https://6lbltlq919.execute-api.us-east-1.amazonaws.com/prod/",
+    "UserPoolClientId": "6e1f2t48a9dcuui7gi2fkss01i",
+    "UserPoolId": "us-east-1_2RNRC7XFx",
+    "ApiUrl": "https://6lbltlq919.execute-api.us-east-1.amazonaws.com/prod/",
+    "CloudFrontUrl": "https://d19ai7ysp3ps6k.cloudfront.net",
+    "FrontendBucketName": "mdf-frontend-703346216028"
+  }
+}
